@@ -113,7 +113,7 @@ ID                      [$a-zA-Z_][$a-zA-Z0-9_]*
 WS                      [ \t]
 EQUAL                   \=\=\=|\=\=|\>\>\>|\<\<\<|\!\=\=|\=\=|\!\=|\>\=|\<\=|\>\>|\<\<
 ASSIGN                  \>\>\>\=|\<\<\<\=|\|\=|&\=|\+\=|\-\=|\*\=|\/\=|%\=|\>\>\=|\<\<\=|\^\=|\=
-OPERATORS               [!~\[\]\(\)\{\},>.<+/*&%:?^|-]
+OPERATORS               \.\.|[!~\[\]\(\)\{\},>.<+/*&%:?^|-]
 NL                      (?![a-zA-Z0-9_$])
 
 %s number string string-body text-line text-block comment-line comment-block

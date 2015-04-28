@@ -8,5 +8,5 @@ parser.yy.$ = nodes;
 
 var fs = require("fs");
 var test = fs.readFileSync('./test.jade', 'utf8');
-
+console.log('generated');
 console.log(JSON.stringify(parser.parse(test), null, 4));

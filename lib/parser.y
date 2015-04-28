@@ -1,5 +1,5 @@
 %left       ','
-%right      '=' '+=' '-=' '*=' '/=' '%=' '^=' '>>=' '<<=' '>>>=' '<<<='
+%right      '=' '+=' '-=' '*=' '/=' '%=' '&=' '|=' '^=' '>>=' '<<=' '>>>=' '<<<='
 %left       '&' '|' '^'
 %left       '||' '&&'
 %left       '==' '===' '!=' '!=='
@@ -7,9 +7,8 @@
 %left       '..'
 %left       '+' '-'
 %left       '*' '/' '%'
-%left       '.'
+%left       ':' '.' TYPEOF INSTANCEOF
 %right      '!' '~' PLUS MINUS
-
 
 %start program
 
@@ -181,13 +180,6 @@ text
         { $$ = new yy.$.ScalarNode($1); }
     ;
 
-id
-    : ID
-        { $$ = new yy.$.IdentifierNode($1); }
-    | id '.' id
-        { $$ = new yy.$.PropertyOpNode($1, $3); }
-    ;
-
 unary
     : '+' expr %prec PLUS
         { $$ = new yy.$.UnaryOpNode('+', $2); }
@@ -238,12 +230,15 @@ binary
         { $$ = new yy.$.BinaryOpNode('==', $1, $3); }
     | expr '!=' expr
         { $$ = new yy.$.BinaryOpNode('!=', $1, $3); }
+    | expr TYPEOF expr
+        { $$ = new yy.$.BinaryOpNode('typeof', $1, $3); }
+    | expr INSTANCEOF expr
+        { $$ = new yy.$.BinaryOpNode('instanceof', $1, $3); }
+
     ;
 
 scalar
-    : STRING
-        { $$ = new yy.$.ScalarNode($1, 'string'); }
-    | NUMBER
+    : NUMBER
         { $$ = new yy.$.ScalarNode($1, 'number'); }
     | TRUE
         { $$ = new yy.$.ScalarNode(true, 'boolean'); }
@@ -251,6 +246,35 @@ scalar
         { $$ = new yy.$.ScalarNode(false, 'boolean'); }
     | NULL
         { $$ = new yy.$.ScalarNode(null, 'null'); }
+    ;
+
+assign
+    : expr '=' expr
+        { $$ = new yy.$.AssignOpNode('=', $1, $3); }
+    | expr '+=' expr
+        { $$ = new yy.$.AssignOpNode('+=', $1, $3); }
+    | expr '-=' expr
+        { $$ = new yy.$.AssignOpNode('-=', $1, $3); }
+    | expr '*=' expr
+        { $$ = new yy.$.AssignOpNode('*=', $1, $3); }
+    | expr '/=' expr
+        { $$ = new yy.$.AssignOpNode('/=', $1, $3); }
+    | expr '%=' expr
+        { $$ = new yy.$.AssignOpNode('%=', $1, $3); }
+    | expr '&=' expr
+        { $$ = new yy.$.AssignOpNode('&=', $1, $3); }
+    | expr '|=' expr
+        { $$ = new yy.$.AssignOpNode('|=', $1, $3); }
+    | expr '^=' expr
+        { $$ = new yy.$.AssignOpNode('^=', $1, $3); }
+    | expr '>>=' expr
+        { $$ = new yy.$.AssignOpNode('>>=', $1, $3); }
+    | expr '<<=' expr
+        { $$ = new yy.$.AssignOpNode('<<=', $1, $3); }
+    | expr '>>>=' expr
+        { $$ = new yy.$.AssignOpNode('>>>=', $1, $3); }
+    | expr '<<<=' expr
+        { $$ = new yy.$.AssignOpNode('<<<=', $1, $3); }
     ;
 
 array
@@ -286,11 +310,47 @@ object-id
     | STRING
     ;
 
-expr
-    : id
-    | scalar
+args-list
+    : expr
+        { $$ = [$1] }
+    | args-list ',' expr
+        { $$ = $1.concat($3); }
+    ;
+
+index-expr
+    : expr ':'
+        { $$ = [$1, null]; }
+    | ':' expr
+        { $$ = [null, $2]; }
+    | expr ':' expr
+        { $$ = [$1, $3]; }
+    ;
+
+sub-expr
+    : ID
+        { $$ = new yy.$.IdentifierNode($1); }
+    | STRING
+        { $$ = new yy.$.StringNode($1); }
+    | '(' expr ')'
+        { $$ = $2; }
+    | sub-expr '(' ')'
+        { $$ = new yy.$.FunctionCallOpNode($1, []); }
+    | sub-expr '(' args-list ')'
+        { $$ = new yy.$.FunctionCallOpNode($1, $3); }
+    | sub-expr '.' ID
+        { $$ = new yy.$.PropertyOpNode($1, $3); }
+    | sub-expr '[' expr ']'
+        { $$ = new yy.$.IndexOpNode($1, $3); }
+    | sub-expr '[' index-expr ']'
+        { $$ = new yy.$.SliceOpNode($1, $3[0], $3[1]); }
     | array
+    ;
+
+expr
+    : scalar
     | object
+    | sub-expr
     | unary
+    | assign
     | binary
     ;
