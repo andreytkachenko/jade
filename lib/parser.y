@@ -1,3 +1,10 @@
+%{
+ var isArray = function (a) {
+    Object.prototype.toString.call(a) === '[object Array]';
+ }
+%}
+
+
 %left       ','
 %right      '=' '+=' '-=' '*=' '/=' '%=' '&=' '|=' '^=' '>>=' '<<=' '>>>=' '<<<='
 %left       '&' '|' '^'
@@ -15,12 +22,28 @@
 %%
 
 program
-    : lines EOF                { return $1; }
+    : program-lines EOF
+        { return $1; }
+    ;
+
+program-lines
+    : program-line
+        { $$ = [$1]; }
+    | program-lines program-line
+        { $$ = $1.concat([$2]); }
+    ;
+
+program-line
+    : line
+    | extends
+    | mixin
     ;
 
 lines
-    : line                      { $$ = [$1]; }
-    | lines line                { $$ = $1.concat([$2]); }
+    : line
+        { $$ = [$1]; }
+    | lines line
+        { $$ = $1.concat([$2]); }
     ;
 
 line
@@ -30,6 +53,12 @@ line
     | for-in
     | case
     | text-line
+    | text-expr
+    | include
+    | filter
+    | extend-block
+    | comment
+    | comment comment-block
     ;
 
 block
@@ -38,8 +67,64 @@ block
     ;
 
 text-line
+    : TEXT_TAG text NEWLINE
+        { $$ = $2; }
+    ;
+
+text-block
     : text NEWLINE
-    | TEXT_TAG text NEWLINE
+        { $$ = [$1]; }
+    | text-block text NEWLINE
+        { $$ = $1.concat([$2]); }
+    ;
+
+text-expr
+    : EXPR_TAG expr NEWLINE
+        { $$ = $2 }
+    ;
+
+text
+    : STRING
+        { $$ = [new yy.$.StringNode($1)]; }
+    | text STRING
+        { $$ = $1.concat([new yy.$.StringNode($2)]); }
+
+    | INTERP_EXPR_BEGIN expr INTERP_EXPR_END
+        { $$ = [$2]; }
+    | text INTERP_EXPR_BEGIN expr INTERP_EXPR_END
+        { $$ = $1.concat([$3]); }
+
+    | INTERP_TAG_BEGIN tag-interp INTERP_TAG_END
+        { $$ = [$2]; }
+
+    | text INTERP_TAG_BEGIN tag-interp INTERP_TAG_END
+        { $$ = $1.concat([$3]); }
+    ;
+
+include
+    : INCLUDE HREF NEWLINE
+    | INCLUDE FILTER_TAG ID HREF NEWLINE
+    ;
+
+extends
+    : EXTENDS HREF NEWLINE
+    ;
+
+filter
+    : FILTER_TAG ID NEWLINE text-block
+    ;
+
+comment
+    : COMMENT NEWLINE
+    ;
+
+comments
+    : comment
+    | comments comment
+    ;
+
+comment-block
+    : INDENT comments DEDENT
     ;
 
 if
@@ -90,6 +175,63 @@ case
 while
     : WHILE expr NEWLINE block
         { $$ = new yy.$.WhileNode($2, $4); }
+    ;
+
+mixin-line
+    : line
+    | YIELD NEWLINE
+        { $$ = new yy.$.MixinYieldNode(); }
+    | BLOCK NEWLINE
+        { $$ = new yy.$.MixinBlockNode(); }
+    ;
+
+mixin-lines
+    : mixin-line
+        { $$ = [$1]; }
+    | mixin-lines mixin-line
+        { $$ = $1.concat([$2]); }
+    ;
+
+mixin-block
+    : INDENT mixin-lines DEDENT
+        { $$ = $2; }
+    ;
+
+mixin-args-list
+    : ID
+        { $$ = [$1]; }
+    | mixin-args-list ',' ID
+        { $$ = [$1]; }
+    | mixin-args-list ',' '...' ID
+        { $$ = [$1]; }
+    ;
+
+mixin-args
+    :
+        { $$ = []; }
+    | '(' ')'
+        { $$ = []; }
+    | '(' mixin-args-list ')'
+        { $$ = $2; }
+    ;
+
+mixin
+    : MIXIN ID mixin-args NEWLINE mixin-block
+        { $$ = new yy.$.MixinNode($2, $3, $4); }
+    | MIXIN ID mixin-args tag-body NEWLINE mixin-block
+        { $$ = new yy.$.MixinNode($2, $3, $6, $4); }
+    | MIXIN ID mixin-args tag-additional-attrs NEWLINE mixin-block
+        { $$ = new yy.$.MixinNode($2, $3, $6, null, $4); }
+    | MIXIN ID mixin-args tag-body tag-additional-attrs NEWLINE mixin-block
+        { $$ = new yy.$.MixinNode($2, $3, $7, $4, $5); }
+    ;
+
+extend-block
+    : BLOCK ID NEWLINE block
+    | BLOCK APPEND ID NEWLINE block
+    | BLOCK PREPEND ID NEWLINE block
+    | APPEND ID NEWLINE block
+    | PREPEND ID NEWLINE block
     ;
 
 tag-head-attr
@@ -171,13 +313,19 @@ tag
         { $1.block=$1.block||[]; $1.block = $1.block.concat($2); $$=$1; }
     | tag-unclosed '.' NEWLINE block
         { $1.block=$4; $$=$1; }
-    | tag-unclosed '.' text NEWLINE block
-        { $1.block=[$3].concat($5); $$=$1; }
+    | tag-unclosed '.' text NEWLINE text-block
+        { $1.block=[$3].concat([$5]); $$=$1; }
     ;
 
-text
-    : STRING
-        { $$ = new yy.$.ScalarNode($1); }
+tag-interp
+    : tag-unclosed
+    | tag-unclosed text
+        { $1.block = [$2]; $$ = $1; }
+    | tag-unclosed EXPR_TAG expr
+        { $1.block = [$3]; $$ = $1; }
+    | tag-unclosed '/'
+    | tag-unclosed ':' tag-interp
+        { $1.block = [$3]; $$ = $1; }
     ;
 
 unary

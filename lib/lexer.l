@@ -116,7 +116,7 @@ ASSIGN                  \>\>\>\=|\<\<\<\=|\|\=|&\=|\+\=|\-\=|\*\=|\/\=|%\=|\>\>\
 OPERATORS               \.\.|[!~\[\]\(\)\{\},>.<+/*&%:?^|-]
 NL                      (?![a-zA-Z0-9_$])
 
-%s number string string-body text-line text-block comment-line comment-block
+%s number string string-body text-block comment-line comment-block
 %s interp tag-interp tag-interp-body
 %s expr expr-body expr-return
 %s tag tag-attrs tag-body tag-and-attrs
@@ -214,7 +214,7 @@ NL                      (?![a-zA-Z0-9_$])
 
                                 if (tokens.length) return tokens;
                             }
-<text-block>[^]             ctx.enter('text-line', 0);
+<text-block>[^]             ctx.enter('string-body', 0);
 
 <comment-line>[^\n]+        ctx.leave(); return 'COMMENT';
 <comment-block>\n{WS}*\n    this.unput('\n');
@@ -277,7 +277,7 @@ NL                      (?![a-zA-Z0-9_$])
 <tag-interp-body,tag-body>"."               ctx.leave(2); ctx.enter('text-block'); return '.';
 <tag-interp-body,tag-body>\=|\!\=           ctx.leave(2, 0);
 <tag-interp-body,tag-body>\&attributes{NL}  ctx.enter('tag-and-attrs'); return 'ATTRIBUTES';
-<tag-interp-body,tag-body>\:{NL}            ctx.leave(2); return ':';
+<tag-interp-body,tag-body>\:{NL}            ctx.leave(1); return ':';
 <tag-interp-body,tag-body>\|                ctx._quote=null; ctx.enter('string-body');
 <tag-interp-body,tag-body>\/                return '/';
 <tag-body>\n                                ctx.leave(1, 0);
@@ -340,8 +340,8 @@ NL                      (?![a-zA-Z0-9_$])
                             }
 
 \+                          ctx.enter('mixin-call'); return 'CALL'
-\|                          ctx.enter('text-line'); return 'TEXT_TAG'
-\<                          ctx.enter('text-line', 0);
+\|                          ctx.enter('string-body'); return 'TEXT_TAG'
+\<                          ctx.enter('string-body', 0);
 \-                          ctx.enter('expr'); return 'STATEMENT_TAG';
 \=|\!\=                     ctx.enter('expr'); return 'EXPR_TAG';
 \:                          ctx.enter('filter'); return 'FILTER_TAG';

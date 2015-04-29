@@ -1,7 +1,7 @@
 /**
  * Created by tkachenko on 16.04.15.
  */
-var JadeLexer = require("./src/lexer.js");
+var JadeLexer = require("./lib/lexer.js");
 var fs = require("fs");
 
 var test = fs.readFileSync('./test.jade', 'utf8');
