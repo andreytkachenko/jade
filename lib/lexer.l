@@ -126,7 +126,7 @@ NL                      (?![a-zA-Z0-9_$])
 
 %%
 
-\/\/\-|\/\/                 ctx.initial();ctx.enter('comment-block');
+<INITIAL>\/\/\-|\/\/        ctx.enter('comment-block');ctx.enter('comment-line',0);
 
 <interp>"#{"                ctx.enter('expr');yytext=true;return 'INTERP_EXPR_BEGIN';
 <interp>"!{"                ctx.enter('expr');yytext=false;return 'INTERP_EXPR_BEGIN';
@@ -219,12 +219,24 @@ NL                      (?![a-zA-Z0-9_$])
 <comment-line>[^\n]+        ctx.leave(); return 'COMMENT';
 <comment-block>\n{WS}*\n    this.unput('\n');
 <comment-block>\n{WS}*      {
-                                var len = yyleng - 1;
+                                var len = yyleng - 1,
+                                    tokens = ['NEWLINE'];
+
                                 if (len <= ctx._indent[0]) {
+                                    ctx._block = undefined;
                                     ctx.leave(1, 0);
+                                    ctx._noNewLine = true;
+                                    tokens.push('DEDENT');
                                 } else {
-                                    ctx.enter('comment-line', ctx._indent[0]);
+                                    ctx._quote = undefined;
+                                    ctx.enter('comment-line', (ctx._block||len) + 1);
+                                    if (ctx._block === undefined) {
+                                        ctx._block = len;
+                                        tokens.push('INDENT');
+                                    }
                                 }
+
+                                if (tokens.length) return tokens;
                             }
 <comment-block>[^]          ctx.enter('comment-line', 0);
 

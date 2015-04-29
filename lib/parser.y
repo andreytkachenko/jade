@@ -52,13 +52,13 @@ line
     | while
     | for-in
     | case
+    | include
+    | extend-block
     | text-line
     | text-expr
-    | include
     | filter
-    | extend-block
     | comment
-    | comment comment-block
+    | mixin-call
     ;
 
 block
@@ -71,11 +71,13 @@ text-line
         { $$ = $2; }
     ;
 
+text-lines
+    : text-line
+    | text-lines text-line
+    ;
+
 text-block
-    : text NEWLINE
-        { $$ = [$1]; }
-    | text-block text NEWLINE
-        { $$ = $1.concat([$2]); }
+    : INDENT text-lines DEDENT
     ;
 
 text-expr
@@ -115,16 +117,21 @@ filter
     ;
 
 comment
+    : comment-line
+    | comment-line comment-block
+    ;
+
+comment-line
     : COMMENT NEWLINE
     ;
 
-comments
-    : comment
-    | comments comment
+comment-lines
+    : comment-line
+    | comment-lines comment-line
     ;
 
 comment-block
-    : INDENT comments DEDENT
+    : INDENT comment-lines DEDENT
     ;
 
 if
@@ -177,6 +184,14 @@ while
         { $$ = new yy.$.WhileNode($2, $4); }
     ;
 
+extend-block
+    : BLOCK ID NEWLINE block
+    | BLOCK APPEND ID NEWLINE block
+    | BLOCK PREPEND ID NEWLINE block
+    | APPEND ID NEWLINE block
+    | PREPEND ID NEWLINE block
+    ;
+
 mixin-line
     : line
     | YIELD NEWLINE
@@ -207,31 +222,31 @@ mixin-args-list
     ;
 
 mixin-args
-    :
-        { $$ = []; }
-    | '(' ')'
+    : '(' ')'
         { $$ = []; }
     | '(' mixin-args-list ')'
         { $$ = $2; }
     ;
 
 mixin
-    : MIXIN ID mixin-args NEWLINE mixin-block
+    : MIXIN ID NEWLINE mixin-block
+        { $$ = new yy.$.MixinNode($2, [], $4); }
+    | MIXIN ID mixin-args NEWLINE mixin-block
         { $$ = new yy.$.MixinNode($2, $3, $4); }
-    | MIXIN ID mixin-args tag-body NEWLINE mixin-block
-        { $$ = new yy.$.MixinNode($2, $3, $6, $4); }
-    | MIXIN ID mixin-args tag-additional-attrs NEWLINE mixin-block
-        { $$ = new yy.$.MixinNode($2, $3, $6, null, $4); }
-    | MIXIN ID mixin-args tag-body tag-additional-attrs NEWLINE mixin-block
-        { $$ = new yy.$.MixinNode($2, $3, $7, $4, $5); }
     ;
 
-extend-block
-    : BLOCK ID NEWLINE block
-    | BLOCK APPEND ID NEWLINE block
-    | BLOCK PREPEND ID NEWLINE block
-    | APPEND ID NEWLINE block
-    | PREPEND ID NEWLINE block
+mixin-call-args
+    : expr
+    | mixin-call-args ',' expr
+    ;
+
+mixin-simple-call
+    : '(' ')'
+    | '(' mixin-call-args ')'
+    ;
+
+mixin-call
+    : CALL ID mixin-simple-call tag-unnamed
     ;
 
 tag-head-attr
@@ -241,20 +256,11 @@ tag-head-attr
         { $$ = new yy.$.TagAttributeNode('id', $1, false); }
     ;
 
-tag-head-attrs
+tag-head
     : tag-head-attr
         { $$ = [$1] }
-    | tag-head-attrs tag-head-attr
+    | tag-head tag-head-attr
         { $$ = $1.concat([$2]); }
-    ;
-
-tag-head
-    : TAG
-        { $$ = {tag: $1, attrs: []}}
-    | TAG tag-head-attrs
-        { $$ = {tag: $1, attrs: $2}}
-    | tag-head-attrs
-        { $$ = {tag: 'div', attrs: $1}}
     ;
 
 tag-attr
@@ -273,59 +279,70 @@ tag-attrs
         { $$ = $1.concat([$3]); }
     ;
 
-tag-body
+tag-body-attr
     : '(' ')'
         { $$ = []; }
     | '(' tag-attrs ')'
         { $$ = $2; }
-    ;
-
-tag-additional-attrs
-    : ATTRIBUTES '(' expr ')'
+    | ATTRIBUTES '(' expr ')'
         { $$ = $3 }
     ;
 
-tag-unclosed
-    : tag-head
-        { $$ = new yy.$.TagNode($1, []); }
-    | tag-head tag-body
-        { $$ = new yy.$.TagNode($1, $2); }
-    | tag-head tag-additional-attrs
-        { $$ = new yy.$.TagNode($1, [], $2); }
-    | tag-head tag-body tag-additional-attrs
-        { $$ = new yy.$.TagNode($1, $2, $3); }
+tag-body-attrs
+    : tag-body-attr
+    | tag-body-attrs tag-body-attr
     ;
 
-tag-default
-    : tag-unclosed NEWLINE
-    | tag-unclosed text NEWLINE
-        { $1.block = [$2]; $$ = $1; }
-    | tag-unclosed EXPR_TAG expr NEWLINE
-        { $1.block = [$3]; $$ = $1; }
+tag-body
+    : tag-head
+    | tag-body-attrs
+    | tag-head tag-body-attrs
+    ;
+
+tag-tail-interp
+    : text
+    | EXPR_TAG expr
+    | TEXT_TAG text
+    | ':' tag-interp
+    | '/'
+    ;
+
+tag-tail
+    : NEWLINE block
+    | text NEWLINE
+    | text NEWLINE block
+    | TEXT_TAG text NEWLINE
+    | TEXT_TAG text NEWLINE block
+    | EXPR_TAG expr NEWLINE
+    | EXPR_TAG expr NEWLINE block
+    | ':' tag
+    | '/' NEWLINE
+    | '.' NEWLINE text-block
+    ;
+
+tag-unnamed
+    : tag-body NEWLINE
+    | tag-tail
+    | tag-body tag-tail
     ;
 
 tag
-    : tag-unclosed '/' NEWLINE
-    | tag-unclosed ':' tag
-        { $1.block = [$3]; $$ = $1; }
-    | tag-default
-    | tag-default block
-        { $1.block=$1.block||[]; $1.block = $1.block.concat($2); $$=$1; }
-    | tag-unclosed '.' NEWLINE block
-        { $1.block=$4; $$=$1; }
-    | tag-unclosed '.' text NEWLINE text-block
-        { $1.block=[$3].concat([$5]); $$=$1; }
+    : TAG NEWLINE
+    | TAG tag-unnamed
+    | tag-body NEWLINE
+    | tag-body tag-tail
+    ;
+
+tag-unnamed-interp
+    : tag-body
+    | tag-tail-interp
+    | tag-body tag-tail-interp
     ;
 
 tag-interp
-    : tag-unclosed
-    | tag-unclosed text
-        { $1.block = [$2]; $$ = $1; }
-    | tag-unclosed EXPR_TAG expr
-        { $1.block = [$3]; $$ = $1; }
-    | tag-unclosed '/'
-    | tag-unclosed ':' tag-interp
-        { $1.block = [$3]; $$ = $1; }
+    : TAG
+    | TAG tag-unnamed-interp
+    | tag-unnamed-interp
     ;
 
 unary
