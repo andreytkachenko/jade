@@ -1,6 +1,6 @@
 %{
  var isArray = function (a) {
-    Object.prototype.toString.call(a) === '[object Array]';
+    return Object.prototype.toString.call(a) === '[object Array]';
  }
 %}
 
@@ -14,8 +14,8 @@
 %left       '..'
 %left       '+' '-'
 %left       '*' '/' '%'
-%left       ':' '.' TYPEOF INSTANCEOF
-%right      '!' '~' PLUS MINUS
+%left       ':' '.' INSTANCEOF
+%right      '!' '~' PLUS MINUS TYPEOF DELETE NEW
 
 %start program
 
@@ -54,8 +54,9 @@ line
     | case
     | include
     | extend-block
-    | text-line
+    | text-tag
     | text-expr
+    | text-statement
     | filter
     | comment
     | mixin-call
@@ -66,41 +67,61 @@ block
         { $$ = $2; }
     ;
 
-text-line
+text-tag
     : TEXT_TAG text NEWLINE
         { $$ = $2; }
     ;
 
+text-line
+    : text NEWLINE
+        { $$ = $1.addString($2); }
+    ;
+
 text-lines
     : text-line
+        { $$ = $1; }
     | text-lines text-line
+        { $$ = $1.addStringArray($2); }
     ;
 
 text-block
     : INDENT text-lines DEDENT
+        { $$ = $2; }
     ;
 
 text-expr
-    : EXPR_TAG expr NEWLINE
-        { $$ = $2 }
+    : EXPR_TAG expr-node NEWLINE
+        { $$ = $2; }
+    ;
+
+text-statement
+    : STATEMENT_TAG statement-node NEWLINE
+        { $$ = $2; }
+    ;
+
+expr-node
+    : expr
+        { $$ = new yy.$.ExprNode($1); }
     ;
 
 text
     : STRING
-        { $$ = [new yy.$.StringNode($1)]; }
-    | text STRING
-        { $$ = $1.concat([new yy.$.StringNode($2)]); }
+        { $$ = new yy.$.StringArrayNode($1); }
 
-    | INTERP_EXPR_BEGIN expr INTERP_EXPR_END
-        { $$ = [$2]; }
-    | text INTERP_EXPR_BEGIN expr INTERP_EXPR_END
-        { $$ = $1.concat([$3]); }
+    | text STRING
+        { $$ = $1.addString($2); }
+
+    | INTERP_EXPR_BEGIN expr-node INTERP_EXPR_END
+        { $$ = new yy.$.StringArrayNode($2); }
+
+    | text INTERP_EXPR_BEGIN expr-node INTERP_EXPR_END
+        { $$ = $1.addNode($3); }
 
     | INTERP_TAG_BEGIN tag-interp INTERP_TAG_END
-        { $$ = [$2]; }
+        { $$ = new yy.$.StringArrayNode($2); }
 
     | text INTERP_TAG_BEGIN tag-interp INTERP_TAG_END
-        { $$ = $1.concat([$3]); }
+        { $$ = $1.addNode($3); }
     ;
 
 include
@@ -135,31 +156,31 @@ comment-block
     ;
 
 if
-    : IF expr NEWLINE block
+    : IF expr-node NEWLINE block
         { $$ = new yy.$.IfElseNode($2, $4); }
-    | IF expr NEWLINE block ELSE NEWLINE block
+    | IF expr-node NEWLINE block ELSE NEWLINE block
         { $$ = new yy.$.IfElseNode($2, $4, $7); }
-    | IF expr NEWLINE block ELSE if
+    | IF expr-node NEWLINE block ELSE if
         { $$ = new yy.$.IfElseNode($2, $4, $6); }
-    | UNLESS expr NEWLINE block
+    | UNLESS expr-node NEWLINE block
         { $$ = new yy.$.IfElseNode(new yy.$.UnaryOpNode('!', $2), $4); }
-    | UNLESS expr NEWLINE block ELSE NEWLINE block
+    | UNLESS expr-node NEWLINE block ELSE NEWLINE block
         { $$ = new yy.$.IfElseNode(new yy.$.UnaryOpNode('!', $2), $4, $7); }
-    | UNLESS expr NEWLINE block ELSE if
+    | UNLESS expr-node NEWLINE block ELSE if
         { $$ = new yy.$.IfElseNode(new yy.$.UnaryOpNode('!', $2), $4, $6); }
     ;
 
 for-in
-    : EACH ID IN expr NEWLINE block
+    : EACH ID IN expr-node NEWLINE block
         { $$ = new yy.$.ForInNode($2, null, $4, $6); }
-    | EACH ID ',' ID IN expr NEWLINE block
+    | EACH ID ',' ID IN expr-node NEWLINE block
         { $$ = new yy.$.ForInNode($2, $4, $6, $8); }
     ;
 
 when-block
-    : WHEN expr NEWLINE
+    : WHEN expr-node NEWLINE
         { $$ = new yy.$.CaseWhenNode($2, null); }
-    | WHEN expr NEWLINE block
+    | WHEN expr-node NEWLINE block
         { $$ = new yy.$.CaseWhenNode($2, $4); }
     | DEFAULT NEWLINE
         { $$ = new yy.$.CaseDefaultNode(); }
@@ -175,12 +196,12 @@ case-block
     ;
 
 case
-    : CASE expr NEWLINE INDENT case-block DEDENT
+    : CASE expr-node NEWLINE INDENT case-block DEDENT
         { $$ = new yy.$.CaseNode($2, $5); }
     ;
 
 while
-    : WHILE expr NEWLINE block
+    : WHILE expr-node NEWLINE block
         { $$ = new yy.$.WhileNode($2, $4); }
     ;
 
@@ -236,8 +257,8 @@ mixin
     ;
 
 mixin-call-args
-    : expr
-    | mixin-call-args ',' expr
+    : expr-node
+    | mixin-call-args ',' expr-node
     ;
 
 mixin-simple-call
@@ -264,9 +285,9 @@ tag-head
     ;
 
 tag-attr
-    : ATTR '=' expr
+    : ATTR '=' expr-node
         { $$ = new yy.$.TagAttributeNode($1, $3, true); }
-    | ATTR '!=' expr
+    | ATTR '!=' expr-node
         { $$ = new yy.$.TagAttributeNode($1, $3, false); }
     ;
 
@@ -284,65 +305,100 @@ tag-body-attr
         { $$ = []; }
     | '(' tag-attrs ')'
         { $$ = $2; }
-    | ATTRIBUTES '(' expr ')'
-        { $$ = $3 }
+    | ATTRIBUTES '(' expr-node ')'
+        { $$ = [$3] }
     ;
 
 tag-body-attrs
     : tag-body-attr
+        { $$ = $1 }
     | tag-body-attrs tag-body-attr
+        { $$ = $1.concat($2); }
     ;
 
 tag-body
     : tag-head
+        { $$ = $1 }
     | tag-body-attrs
+        { $$ = $1; }
     | tag-head tag-body-attrs
+        { $$ = $1.concat($2); }
     ;
 
 tag-tail-interp
     : text
-    | EXPR_TAG expr
+        { $$ = [$1]; }
+    | EXPR_TAG expr-node
+        { $$ = [$2]; }
     | TEXT_TAG text
+        { $$ = [$2]; }
     | ':' tag-interp
+        { $$ = [$2]; }
     | '/'
+        { $$ = []; }
     ;
 
 tag-tail
     : NEWLINE block
+        { $$ = $2; }
     | text NEWLINE
+        { $$ = [$1]; }
     | text NEWLINE block
+        { $$ = [$1].concat($3); }
     | TEXT_TAG text NEWLINE
+        { $$ = [$2]; }
     | TEXT_TAG text NEWLINE block
-    | EXPR_TAG expr NEWLINE
-    | EXPR_TAG expr NEWLINE block
+        { $$ = [$2].concat($4); }
+    | EXPR_TAG expr-node NEWLINE
+        { $$ = [$2]; }
+    | EXPR_TAG expr-node NEWLINE block
+        { $$ = [$2].concat($4); }
     | ':' tag
+        { $$ = [$2]; }
     | '/' NEWLINE
+        { $$ = []; }
     | '.' NEWLINE text-block
+        { $$ = $3; }
     ;
 
 tag-unnamed
     : tag-body NEWLINE
+        { $$ = [$1, null]; }
     | tag-tail
+        { $$ = [null, $1] }
     | tag-body tag-tail
+        { $$ = [$1, $2] }
     ;
 
 tag
     : TAG NEWLINE
+        { $$ = new yy.$.TagNode($1, null, null); }
     | TAG tag-unnamed
+        { $$ = new yy.$.TagNode($1, $2[0], $2[1]); }
     | tag-body NEWLINE
+        { $$ = new yy.$.TagNode(null, $1, null); }
     | tag-body tag-tail
+        { $$ = new yy.$.TagNode(null, $1, $2); }
     ;
 
 tag-unnamed-interp
     : tag-body
+        { $$ = [$1, null]; }
     | tag-tail-interp
+        { $$ = [null, $1]; }
     | tag-body tag-tail-interp
+        { $$ = [$1, $2]; }
     ;
 
 tag-interp
     : TAG
+        { $$ = yy.$.TagNode($1, null, null); }
     | TAG tag-unnamed-interp
-    | tag-unnamed-interp
+        { $$ = yy.$.TagNode($1, $2[0], $2[1]); }
+    | tag-body NEWLINE
+        { $$ = yy.$.TagNode(null, $1, null); }
+    | tag-body tag-tail-interp
+        { $$ = yy.$.TagNode(null, $1, $2); }
     ;
 
 unary
@@ -354,6 +410,10 @@ unary
         { $$ = new yy.$.UnaryOpNode('!', $2); }
     | '~' expr
         { $$ = new yy.$.UnaryOpNode('~', $2); }
+    | TYPEOF expr
+        { $$ = new yy.$.UnaryOpNode('typeof', $2); }
+    | NEW expr
+        { $$ = new yy.$.UnaryOpNode('new', $2); }
     ;
 
 binary
@@ -395,22 +455,9 @@ binary
         { $$ = new yy.$.BinaryOpNode('==', $1, $3); }
     | expr '!=' expr
         { $$ = new yy.$.BinaryOpNode('!=', $1, $3); }
-    | expr TYPEOF expr
-        { $$ = new yy.$.BinaryOpNode('typeof', $1, $3); }
     | expr INSTANCEOF expr
         { $$ = new yy.$.BinaryOpNode('instanceof', $1, $3); }
 
-    ;
-
-scalar
-    : NUMBER
-        { $$ = new yy.$.ScalarNode($1, 'number'); }
-    | TRUE
-        { $$ = new yy.$.ScalarNode(true, 'boolean'); }
-    | FALSE
-        { $$ = new yy.$.ScalarNode(false, 'boolean'); }
-    | NULL
-        { $$ = new yy.$.ScalarNode(null, 'null'); }
     ;
 
 assign
@@ -491,11 +538,48 @@ index-expr
         { $$ = [$1, $3]; }
     ;
 
+scalar
+    : NUMBER
+        { $$ = new yy.$.ScalarNode($1, 'number'); }
+    | TRUE
+        { $$ = new yy.$.ScalarNode(true, 'boolean'); }
+    | FALSE
+        { $$ = new yy.$.ScalarNode(false, 'boolean'); }
+    | NULL
+        { $$ = new yy.$.ScalarNode(null, 'null'); }
+    ;
+
+identifier
+    : ID
+        { $$ = new yy.$.IdentifierNode($1); }
+    | identifier '.' ID
+        { $$ = new yy.$.PropertyOpNode($1, $3); }
+    | identifier '[' expr ']'
+        { $$ = new yy.$.IndexOpNode($1, $3); }
+    | '(' expr ')'
+        { $$ = $2; }
+    ;
+
+statement-node
+    : statement
+    | statement ';'
+    ;
+
+statement
+    : expr
+    | VAR ID
+        { $$ = new yy.$.VariableNode($2); }
+    | VAR ID '=' expr
+        { $$ = new yy.$.VariableNode($2, $4); }
+    | DELETE identifier
+        { $$ = new yy.$.DeleteNode($2); }
+    ;
+
 sub-expr
     : ID
         { $$ = new yy.$.IdentifierNode($1); }
-    | STRING
-        { $$ = new yy.$.StringNode($1); }
+    | text
+        { $$ = $1; }
     | '(' expr ')'
         { $$ = $2; }
     | sub-expr '(' ')'
