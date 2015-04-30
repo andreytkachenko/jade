@@ -5,16 +5,16 @@
 %}
 
 
-%left       ','
+%left       ',' SLICE
 %right      '=' '+=' '-=' '*=' '/=' '%=' '&=' '|=' '^=' '>>=' '<<=' '>>>=' '<<<='
+%left       '?' ':'
 %left       '&' '|' '^'
 %left       '||' '&&'
-%left       '==' '===' '!=' '!=='
-%left       '<' '>' '<=' '>='
+%left       '==' '===' '!=' '!==' '<' '>' '<=' '>='
 %left       '..'
 %left       '+' '-'
 %left       '*' '/' '%'
-%left       ':' '.' INSTANCEOF
+%left       '.' INSTANCEOF
 %right      '!' '~' PLUS MINUS TYPEOF DELETE NEW
 
 %start program
@@ -54,7 +54,7 @@ line
     | case
     | include
     | extend-block
-    | text-tag
+    | text-line
     | text-expr
     | text-statement
     | filter
@@ -67,14 +67,11 @@ block
         { $$ = $2; }
     ;
 
-text-tag
+text-line
     : TEXT_TAG text NEWLINE
         { $$ = $2; }
-    ;
-
-text-line
-    : text NEWLINE
-        { $$ = $1.addString($2); }
+    | text NEWLINE
+        { $$ = $1.addString('\n'); }
     ;
 
 text-lines
@@ -86,7 +83,7 @@ text-lines
 
 text-block
     : INDENT text-lines DEDENT
-        { $$ = $2; }
+        { $$ = [$2]; }
     ;
 
 text-expr
@@ -126,15 +123,19 @@ text
 
 include
     : INCLUDE HREF NEWLINE
+        { $$ = new yy.$.IncludeNode($2); }
     | INCLUDE FILTER_TAG ID HREF NEWLINE
+        { $$ = new yy.$.IncludeNode($4, $3); }
     ;
 
 extends
     : EXTENDS HREF NEWLINE
+        { $$ = new yy.$.ExtendsNode($2); }
     ;
 
 filter
     : FILTER_TAG ID NEWLINE text-block
+        { $$ = new yy.$.FilterNode($2, $4); }
     ;
 
 comment
@@ -460,6 +461,10 @@ binary
 
     ;
 
+ternary
+    : expr '?' expr ':' expr
+    ;
+
 assign
     : expr '=' expr
         { $$ = new yy.$.AssignOpNode('=', $1, $3); }
@@ -530,11 +535,11 @@ args-list
     ;
 
 index-expr
-    : expr ':'
+    : expr ':' %prec SLICE
         { $$ = [$1, null]; }
-    | ':' expr
+    | ':' expr  %prec SLICE
         { $$ = [null, $2]; }
-    | expr ':' expr
+    | expr ':' expr  %prec SLICE
         { $$ = [$1, $3]; }
     ;
 
@@ -562,7 +567,9 @@ identifier
 
 statement-node
     : statement
+        { $$ = new yy.$.StatementNode($1); }
     | statement ';'
+        { $$ = new yy.$.StatementNode($1); }
     ;
 
 statement
@@ -602,4 +609,5 @@ expr
     | unary
     | assign
     | binary
+    | ternary
     ;
