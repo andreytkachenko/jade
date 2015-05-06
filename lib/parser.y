@@ -1,10 +1,3 @@
-%{
- var isArray = function (a) {
-    return Object.prototype.toString.call(a) === '[object Array]';
- }
-%}
-
-
 %left       ',' SLICE
 %right      '=' '+=' '-=' '*=' '/=' '%=' '&=' '|=' '^=' '>>=' '<<=' '>>>=' '<<<='
 %left       '?' ':'
@@ -60,6 +53,10 @@ line
     | filter
     | comment
     | mixin-call
+    | YIELD NEWLINE
+        { $$ = new yy.$.MixinYieldNode(); }
+    | BLOCK NEWLINE
+        { $$ = new yy.$.MixinBlockNode(); }
     ;
 
 block
@@ -214,33 +211,13 @@ extend-block
     | PREPEND ID NEWLINE block
     ;
 
-mixin-line
-    : line
-    | YIELD NEWLINE
-        { $$ = new yy.$.MixinYieldNode(); }
-    | BLOCK NEWLINE
-        { $$ = new yy.$.MixinBlockNode(); }
-    ;
-
-mixin-lines
-    : mixin-line
-        { $$ = [$1]; }
-    | mixin-lines mixin-line
-        { $$ = $1.concat([$2]); }
-    ;
-
-mixin-block
-    : INDENT mixin-lines DEDENT
-        { $$ = $2; }
-    ;
-
 mixin-args-list
     : ID
-        { $$ = [$1]; }
+        { $$ = [ new yy.$.MixinArgumentNode($1) ]; }
     | mixin-args-list ',' ID
-        { $$ = [$1]; }
-    | mixin-args-list ',' '...' ID
-        { $$ = [$1]; }
+        { $$ = $1.concat([new yy.$.MixinArgumentNode($3)]); }
+    | mixin-args-list ',' ELLIPSIS ID
+        { $$ = $1.concat([new yy.$.MixinArgumentNode($4, true)]); }
     ;
 
 mixin-args
@@ -251,31 +228,36 @@ mixin-args
     ;
 
 mixin
-    : MIXIN ID NEWLINE mixin-block
+    : MIXIN ID NEWLINE block
         { $$ = new yy.$.MixinNode($2, [], $4); }
-    | MIXIN ID mixin-args NEWLINE mixin-block
-        { $$ = new yy.$.MixinNode($2, $3, $4); }
+    | MIXIN ID mixin-args NEWLINE block
+        { $$ = new yy.$.MixinNode($2, $3, $5); }
     ;
 
 mixin-call-args
     : expr-node
+        { $$ = [$1]; }
     | mixin-call-args ',' expr-node
+        { $$ = $1.concat([$3]); }
     ;
 
 mixin-simple-call
     : '(' ')'
+        { $$ = []; }
     | '(' mixin-call-args ')'
+        { $$ = $2; }
     ;
 
 mixin-call
     : CALL ID mixin-simple-call tag-unnamed
+        { $$ = new yy.$.MixinCallNode($2, $3, $4[0], $4[1]); }
     ;
 
 tag-head-attr
     : TAG_CLASS
-        { $$ = new yy.$.TagAttributeNode('class', $1, false); }
+        { $$ = new yy.$.TagAttributeNode('class', new yy.$.StringNode($1), false); }
     | TAG_ID
-        { $$ = new yy.$.TagAttributeNode('id', $1, false); }
+        { $$ = new yy.$.TagAttributeNode('id', new yy.$.StringNode($1), false); }
     ;
 
 tag-head
@@ -600,11 +582,11 @@ sub-expr
     | sub-expr '[' index-expr ']'
         { $$ = new yy.$.SliceOpNode($1, $3[0], $3[1]); }
     | array
+    | object
     ;
 
 expr
     : scalar
-    | object
     | sub-expr
     | unary
     | assign

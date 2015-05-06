@@ -244,7 +244,7 @@ NL                      (?![a-zA-Z0-9_$])
 <mixin>{ID}                 return 'ID';
 <mixin>"("                  ctx.enter('mixin-args', 0);
 <mixin>\n                   ctx.leave(1, 0);
-<mixin-args>"..."           return ELLIPSIS;
+<mixin-args>"..."           return 'ELLIPSIS';
 <mixin-args>"("             return '(';
 <mixin-args>")"             ctx.leave(1); return ')';
 <mixin-args>","             return ',';
