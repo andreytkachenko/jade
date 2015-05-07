@@ -53,7 +53,8 @@
     "github-basic": "^4.1.2",
     "pull-request": "^3.0.0",
     "lsr": "^1.0.0",
-    "rimraf": "^2.2.8"
+    "rimraf": "^2.2.8",
+    "grunt-contrib-uglify": "~0.9.1"
   },
   "component": {
     "scripts": {

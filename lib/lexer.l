@@ -1,48 +1,67 @@
 %{
-    var self = this;
-    this._ctx = this._ctx || {
-        _indent: [0],
-        _stack: [],
-        state: function () {
-            return this._stack[this._stack.length - 1];
-        },
-        initial: function () {
-            this._stack = []
-            this.conditionStack = ['INITIAL'];
-        },
-        replace: function (name, less) {
-            this.leave();
-            this.enter(name, less);
-        },
-        enter: function (name, less) {
-            //console.log('---->', name, yytext);
-            this._stack.push({
-                name: name,
-                cbc: 0
-            });
+    var self = this,
+        isArray = function(arg) {
+            return Object.prototype.toString.call(arg) === '[object Array]';
+        };
 
-            if (less !== undefined) {
-                self.less(less);
+    if (!this._ctx) {
+        this._ctx = {
+            _indent: [0],
+            _stack: [],
+            _tokens: [],
+            state: function () {
+                return this._stack[this._stack.length - 1];
+            },
+            initial: function () {
+                this._stack = [];
+                this.conditionStack = ['INITIAL'];
+            },
+            replace: function (name, less) {
+                this.leave();
+                this.enter(name, less);
+            },
+            enter: function (name, less) {
+                this._stack.push({
+                    name: name,
+                    cbc: 0
+                });
+
+                if (less !== undefined) {
+                    self.less(less);
+                }
+
+                return self.begin(name);
+            },
+            leave: function (count, less) {
+                var state = null;
+                if (count === undefined) count = 1;
+                while (count--) {
+                    self.popState()
+                    state = this._stack.pop();
+                }
+
+                if (less !== undefined) {
+                    self.less(less);
+                }
+
+                return state;
             }
+        };
 
-            return self.begin(name);
-        },
-        leave: function (count, less) {
-            var state = null;
-            if (count === undefined) count = 1;
-            while (count--) {
-                self.popState()
-                state = this._stack.pop();
-                //console.log('<----', this.state().name);
+        this._ctx._lex = this.lex;
+        this.lex = function () {
+            var tokens = this._ctx._tokens;
+            if (tokens.length) return tokens.shift();
+            var token = this._ctx._lex.call(this);
+            if (isArray(token)) {
+                this._ctx._tokens = this._ctx._tokens.concat(token);
+
+                return this.lex();
+            } else {
+                return token;
             }
-
-            if (less !== undefined) {
-                self.less(less);
-            }
-
-            return state;
         }
-    };
+    }
 
     function isExprNotEnd (token, number) {
         var result = true;
