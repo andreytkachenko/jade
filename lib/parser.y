@@ -205,10 +205,15 @@ while
 
 extend-block
     : BLOCK ID NEWLINE block
+        { $$ = new yy.$.BlockNode($2, null, $4); }
     | BLOCK APPEND ID NEWLINE block
+        { $$ = new yy.$.BlockNode($3, 'APPEND', $5); }
     | BLOCK PREPEND ID NEWLINE block
+        { $$ = new yy.$.BlockNode($3, 'PREPEND', $5); }
     | APPEND ID NEWLINE block
+        { $$ = new yy.$.BlockNode($2, 'APPEND', $4); }
     | PREPEND ID NEWLINE block
+        { $$ = new yy.$.BlockNode($2, 'PREPEND', $4); }
     ;
 
 mixin-args-list

@@ -379,6 +379,8 @@ NL                      (?![a-zA-Z0-9_$])
 
 mixin{NL}                   ctx.enter('mixin', 0);
 block{NL}                   ctx.enter('block', 0);
+append{NL}                  ctx.enter('block', 0);
+prepend{NL}                 ctx.enter('block', 0);
 (?:if|unless|while|else{WS}*if|when|case){NL}  ctx.enter("if-while", 0);
 (?:foreach|for|each){NL}    ctx.enter("for-each", 0);
 else{NL}                    return 'ELSE';
