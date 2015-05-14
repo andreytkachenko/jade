@@ -72,7 +72,7 @@
         self._ctx.bbrace = self._ctx.bbrace||0;
         self._ctx.tbrace = self._ctx.tbrace||0;
 
-        var toks = ['ID', 'NUM', 'STRING', 'NULL', 'UNDEFINED'];
+        var toks = ['ID', 'NUM', 'STRING', 'NULL', 'TRUE', 'FALSE'];
         var brace = [')', ']', '}'];
 
         if (token === '(') self._ctx.cbrace++;
@@ -82,12 +82,18 @@
         if (token === '{') self._ctx.tbrace++;
         if (token === '}') self._ctx.tbrace--;
 
-        if (token === ',' && !self._ctx.cbrace && !self._ctx.bbrace && !self._ctx.tbrace) {
+        if (self._ctx.cbrace < 0 || self._ctx.bbrace < 0 || self._ctx.tbrace < 0) {
             result = false;
         }
 
-        if (self._ctx.cbrace < 0 || self._ctx.bbrace < 0 || self._ctx.tbrace < 0) {
-            result = false;
+        if (token === 'VAR') {
+            console.dir('var');
+            self._ctx.invar = true;
+        }
+
+        if (token === ';' && self._ctx.invar) {
+            console.dir(';');
+            self._ctx.invar = false;
         }
 
         if (self._ctx.cbrace === 0 && self._ctx.bbrace === 0 && self._ctx.tbrace === 0) {
@@ -109,7 +115,8 @@
     }
 
     function inBraces() {
-        return self._ctx.cbrace || self._ctx.bbrace || self._ctx.tbrace;
+        console.dir(self._ctx.invar);
+        return self._ctx.cbrace || self._ctx.bbrace || self._ctx.tbrace || self._ctx.invar;
     }
 
     function resetExpr() {
@@ -117,6 +124,7 @@
         self._ctx.cbrace = 0;
         self._ctx.bbrace = 0;
         self._ctx.tbrace = 0;
+        self._ctx.invar = false;
     }
 
     var ctx = this._ctx;
@@ -202,7 +210,6 @@ NL                      (?![a-zA-Z0-9_$])
 <expr-body>null{NL}         if (isExprNotEnd('NULL')) return 'NULL';
 <expr-body>true{NL}         if (isExprNotEnd('TRUE')) return 'TRUE';
 <expr-body>false{NL}        if (isExprNotEnd('FALSE')) return 'FALSE';
-<expr-body>undefined{NL}    if (isExprNotEnd('UNDEFINED')) return 'UNDEFINED';
 <expr-body>{NUM}            if (isExprNotEnd('NUMBER')) ctx.enter('number', 0);
 <expr-body>{STRING}         if (isExprNotEnd('STRING')) ctx.enter('string', 0);
 <expr-body>{ID}             if (isExprNotEnd('ID')) return 'ID';

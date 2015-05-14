@@ -445,7 +445,6 @@ binary
         { $$ = new yy.$.BinaryOpNode('!=', $1, $3); }
     | expr INSTANCEOF expr
         { $$ = new yy.$.BinaryOpNode('instanceof', $1, $3); }
-
     ;
 
 ternary
@@ -559,14 +558,24 @@ statement-node
         { $$ = new yy.$.StatementNode($1); }
     ;
 
+var-declarator-list
+    : var-declarator
+        { $$ = [$1]; }
+    | var-declarator-list ',' var-declarator
+        { $$ = $1.concat($3); }
+    ;
+
+var-declarator
+    : ID
+        { $$ = new yy.$.VarDeclaratorNode($1); }
+    | ID '=' expr
+        { $$ = new yy.$.VarDeclaratorNode($1, $3); }
+    ;
+
 statement
     : expr
-    | VAR ID
-        { $$ = new yy.$.VariableNode($2); }
-    | VAR ID '=' expr
-        { $$ = new yy.$.VariableNode($2, $4); }
-    | DELETE identifier
-        { $$ = new yy.$.DeleteNode($2); }
+    | VAR var-declarator-list
+        { $$ = new yy.$.VarDeclarationNode($2, 'var'); }
     ;
 
 sub-expr
