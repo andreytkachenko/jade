@@ -8,7 +8,8 @@
 %left       '+' '-'
 %left       '*' '/' '%'
 %left       '.' INSTANCEOF
-%right      '!' '~' PLUS MINUS TYPEOF DELETE NEW
+%left       POST_PLUS POST_MINUS
+%right      '--' '++' '!' '~' PLUS MINUS TYPEOF DELETE NEW
 
 %start program
 
@@ -323,7 +324,7 @@ tag-tail-interp
     | ':' tag-interp
         { $$ = [$2]; }
     | '/'
-        { $$ = []; }
+        { $$ = null; }
     ;
 
 tag-tail
@@ -344,7 +345,7 @@ tag-tail
     | ':' tag
         { $$ = [$2]; }
     | '/' NEWLINE
-        { $$ = []; }
+        { $$ = null; }
     | '.' NEWLINE text-block
         { $$ = $3; }
     ;
@@ -380,13 +381,13 @@ tag-unnamed-interp
 
 tag-interp
     : TAG
-        { $$ = yy.$.TagNode($1, null, null); }
+        { $$ = new yy.$.TagNode($1, null, null); }
     | TAG tag-unnamed-interp
-        { $$ = yy.$.TagNode($1, $2[0], $2[1]); }
+        { $$ = new yy.$.TagNode($1, $2[0], $2[1]); }
     | tag-body NEWLINE
-        { $$ = yy.$.TagNode(null, $1, null); }
+        { $$ = new yy.$.TagNode(null, $1, null); }
     | tag-body tag-tail-interp
-        { $$ = yy.$.TagNode(null, $1, $2); }
+        { $$ = new yy.$.TagNode(null, $1, $2); }
     ;
 
 unary
@@ -402,6 +403,14 @@ unary
         { $$ = new yy.$.UnaryOpNode('typeof', $2); }
     | NEW expr
         { $$ = new yy.$.UnaryOpNode('new', $2); }
+    | expr '--' %prec POST_MINUS
+        { $$ = new yy.$.UnaryOpNode('--', undefined, $1); }
+    | expr '++' %prec POST_PLUS
+        { $$ = new yy.$.UnaryOpNode('++', undefined, $1); }
+    | '--' expr
+        { $$ = new yy.$.UnaryOpNode('--', $2); }
+    | '++' expr
+        { $$ = new yy.$.UnaryOpNode('++', $2); }
     ;
 
 binary
@@ -449,6 +458,7 @@ binary
 
 ternary
     : expr '?' expr ':' expr
+        { $$ = new yy.$.ConditionExpression($1, $3, $5); }
     ;
 
 assign
@@ -513,22 +523,6 @@ object-id
     | STRING
     ;
 
-args-list
-    : expr
-        { $$ = [$1] }
-    | args-list ',' expr
-        { $$ = $1.concat($3); }
-    ;
-
-index-expr
-    : expr ':' %prec SLICE
-        { $$ = [$1, null]; }
-    | ':' expr  %prec SLICE
-        { $$ = [null, $2]; }
-    | expr ':' expr  %prec SLICE
-        { $$ = [$1, $3]; }
-    ;
-
 scalar
     : NUMBER
         { $$ = new yy.$.ScalarNode($1, 'number'); }
@@ -567,15 +561,34 @@ var-declarator-list
 
 var-declarator
     : ID
-        { $$ = new yy.$.VarDeclaratorNode($1); }
+        { $$ = new yy.$.VarDeclarationNode($1); }
     | ID '=' expr
-        { $$ = new yy.$.VarDeclaratorNode($1, $3); }
+        { $$ = new yy.$.VarDeclarationNode($1, $3); }
     ;
 
 statement
     : expr
     | VAR var-declarator-list
-        { $$ = new yy.$.VarDeclarationNode($2, 'var'); }
+        { $$ = new yy.$.VarStatementNode($2, 'var'); }
+    | LET var-declarator-list
+        { $$ = new yy.$.VarStatementNode($2, 'let'); }
+    ;
+
+args-list
+    : expr
+        { $$ = [$1] }
+    | args-list ',' expr
+        { $$ = $1.concat($3); }
+    ;
+
+
+slice-expr
+    : expr ':' %prec SLICE
+        { $$ = [$1, null]; }
+    | ':' expr  %prec SLICE
+        { $$ = [null, $2]; }
+    | expr ':' expr  %prec SLICE
+        { $$ = [$1, $3]; }
     ;
 
 sub-expr
@@ -593,7 +606,7 @@ sub-expr
         { $$ = new yy.$.PropertyOpNode($1, $3); }
     | sub-expr '[' expr ']'
         { $$ = new yy.$.IndexOpNode($1, $3); }
-    | sub-expr '[' index-expr ']'
+    | sub-expr '[' slice-expr ']'
         { $$ = new yy.$.SliceOpNode($1, $3[0], $3[1]); }
     | array
     | object

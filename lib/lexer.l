@@ -9,6 +9,7 @@
             _indent: [0],
             _stack: [],
             _tokens: [],
+            _quote: [],
             state: function () {
                 return this._stack[this._stack.length - 1];
             },
@@ -86,13 +87,11 @@
             result = false;
         }
 
-        if (token === 'VAR') {
-            console.dir('var');
+        if (token === 'VAR' || token === 'LET') {
             self._ctx.invar = true;
         }
 
         if (token === ';' && self._ctx.invar) {
-            console.dir(';');
             self._ctx.invar = false;
         }
 
@@ -115,7 +114,6 @@
     }
 
     function inBraces() {
-        console.dir(self._ctx.invar);
         return self._ctx.cbrace || self._ctx.bbrace || self._ctx.tbrace || self._ctx.invar;
     }
 
@@ -140,7 +138,7 @@ ID                      [$a-zA-Z_][$a-zA-Z0-9_]*
 WS                      [ \t]
 EQUAL                   \=\=\=|\=\=|\>\>\>|\<\<\<|\!\=\=|\=\=|\!\=|\>\=|\<\=|\>\>|\<\<
 ASSIGN                  \>\>\>\=|\<\<\<\=|\|\=|&\=|\+\=|\-\=|\*\=|\/\=|%\=|\>\>\=|\<\<\=|\^\=|\=
-OPERATORS               \.\.|[!~\[\]\(\)\{\},>.<+/*&%:?^|-]
+OPERATORS               \+\+|\-\-|\.\.|[!~\[\]\(\)\{\},>.<+/*&%:?^|-]
 NL                      (?![a-zA-Z0-9_$])
 
 %s number string string-body text-block comment-line comment-block
@@ -161,11 +159,12 @@ NL                      (?![a-zA-Z0-9_$])
 <interp>"#["                ctx.enter('tag-interp');return 'INTERP_TAG_BEGIN';
 <interp>"]"                 ctx.leave();return 'INTERP_TAG_END';
 
-<string>{STRING}            ctx._quote=yytext;ctx.enter('string-body');
+<string>{STRING}            ctx._quote.unshift(yytext);ctx.enter('string-body');
 <string-body>[^'"#!\n\]]*[^] {
                                 var last = yytext.charAt(yyleng-1);
-                                var preLast = yyleng > 0 ? yytext.charAt(yyleng-2) : ctx._quote;
-
+                                var quote = ctx._quote[0];
+                                var preLast = yyleng > 0 ? yytext.charAt(yyleng-2) : quote;
+                                
                                 switch (true) {
                                     default:
                                     case preLast === '\\':
@@ -173,10 +172,10 @@ NL                      (?![a-zA-Z0-9_$])
                                     case last === '\n':
                                         ctx.leave(1, yyleng - 1);
                                         return 'STRING';
-                                    case ctx._quote === last:
-                                        if (ctx._quote === '"' || ctx._quote === "'") {
+                                    case ctx._quote[0] === last:
+                                        if (ctx._quote[0] === '"' || ctx._quote[0] === "'") {
                                             yytext = yytext.substr(0, yyleng - 1);
-                                        } else if (ctx._quote) {
+                                        } else if (ctx._quote[0]) {
                                             this.less(yyleng - 1);
                                         }
                                         ctx.leave(2);
@@ -201,6 +200,7 @@ NL                      (?![a-zA-Z0-9_$])
 
 <expr>[^]                   resetExpr();ctx.replace('expr-body', 0);
 
+<expr-body>let{NL}          if (isExprNotEnd('LET')) return 'LET';
 <expr-body>var{NL}          if (isExprNotEnd('VAR')) return 'VAR';
 <expr-body>delete{NL}       if (isExprNotEnd('DELETE')) return 'DELETE';
 <expr-body>in{NL}           if (isExprNotEnd('IN')) return 'IN';
@@ -230,7 +230,7 @@ NL                      (?![a-zA-Z0-9_$])
                                     ctx._noNewLine = true;
                                     tokens.push('DEDENT');
                                 } else {
-                                    ctx._quote = undefined;
+                                    ctx._quote.shift();
                                     ctx.enter('string-body', (ctx._block||len) + 1);
                                     if (ctx._block === undefined) {
                                         ctx._block = len;
@@ -254,7 +254,6 @@ NL                      (?![a-zA-Z0-9_$])
                                     ctx._noNewLine = true;
                                     tokens.push('DEDENT');
                                 } else {
-                                    ctx._quote = undefined;
                                     ctx.enter('comment-line', (ctx._block||len) + 1);
                                     if (ctx._block === undefined) {
                                         ctx._block = len;
@@ -316,12 +315,12 @@ NL                      (?![a-zA-Z0-9_$])
 <tag-interp-body,tag-body>\=|\!\=           ctx.leave(2, 0);
 <tag-interp-body,tag-body>\&attributes{NL}  ctx.enter('tag-and-attrs'); return 'ATTRIBUTES';
 <tag-interp-body,tag-body>\:{NL}            ctx.leave(1); return ':';
-<tag-interp-body,tag-body>\|                ctx._quote=null; ctx.enter('string-body');
+<tag-interp-body,tag-body>\|                ctx._quote.unshift(null); ctx.enter('string-body');
 <tag-interp-body,tag-body>\/                return '/';
 <tag-body>\n                                ctx.leave(1, 0);
 <tag-interp-body>[\]]                       ctx.leave(1, 0);
-<tag-interp-body>[^\n]                      ctx._quote=']'; ctx.enter('string-body', 0);
-<tag-body>[^]                               ctx._quote=null; ctx.enter('string-body', 0);
+<tag-interp-body>[^\n]                      ctx._quote.unshift(']'); ctx.enter('string-body', 0);
+<tag-body>[^]                               ctx._quote.unshift(null); ctx.enter('string-body', 0);
 
 <tag>{TAG}                  ctx.enter('tag-body');return 'TAG';
 <tag>\#{TAG}                ctx.enter('tag-body');yytext=yytext.substr(1);return 'TAG_ID';
