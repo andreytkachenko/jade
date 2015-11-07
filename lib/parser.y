@@ -54,6 +54,7 @@ line
     | filter
     | comment
     | mixin-call
+    | decorator
     | YIELD NEWLINE
         { $$ = new yy.$.MixinYieldNode(); }
     | BLOCK NEWLINE
@@ -134,6 +135,22 @@ extends
 filter
     : FILTER_TAG ID NEWLINE text-block
         { $$ = new yy.$.FilterNode($2, $4); }
+    ;
+
+decorator
+    : DECORATOR_NAME NEWLINE
+        { $$ = new yy.$.DecoratorNode($1); }
+    | DECORATOR_NAME '(' ')' NEWLINE
+        { $$ = new yy.$.DecoratorNode($1); }
+    | DECORATOR_NAME '(' decorator-args ')' NEWLINE
+        { $$ = new yy.$.DecoratorNode($1, $3); }
+    ;
+
+decorator-args
+    : expr
+        { $$ = [new yy.$.DecoratorArgumentNode($1)]; }
+    | decorator-args ',' expr
+        { $1.push(new yy.$.DecoratorArgumentNode($3)); $$ = $1; }
     ;
 
 comment

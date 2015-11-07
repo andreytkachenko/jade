@@ -22,6 +22,7 @@
                 this.enter(name, less);
             },
             enter: function (name, less) {
+                console.log('>>', name)
                 this._stack.push({
                     name: name,
                     cbc: 0
@@ -66,36 +67,33 @@
 
     function isExprNotEnd (token, number) {
         var result = true;
-        var prevTok = self._ctx.prevTok;
-        self._ctx.prevTok = token;
-
-        self._ctx.cbrace = self._ctx.cbrace||0;
-        self._ctx.bbrace = self._ctx.bbrace||0;
-        self._ctx.tbrace = self._ctx.tbrace||0;
+        var state = self._ctx.state().state
+        var prevTok = state.prevTok;
+        state.prevTok = token;
 
         var toks = ['ID', 'NUM', 'STRING', 'NULL', 'TRUE', 'FALSE'];
         var brace = [')', ']', '}'];
 
-        if (token === '(') self._ctx.cbrace++;
-        if (token === ')') self._ctx.cbrace--;
-        if (token === '[') self._ctx.bbrace++;
-        if (token === ']') self._ctx.bbrace--;
-        if (token === '{') self._ctx.tbrace++;
-        if (token === '}') self._ctx.tbrace--;
+        if (token === '(') state.cbrace++;
+        if (token === ')') state.cbrace--;
+        if (token === '[') state.bbrace++;
+        if (token === ']') state.bbrace--;
+        if (token === '{') state.tbrace++;
+        if (token === '}') state.tbrace--;
 
-        if (self._ctx.cbrace < 0 || self._ctx.bbrace < 0 || self._ctx.tbrace < 0) {
+        if (state.cbrace < 0 || state.bbrace < 0 || state.tbrace < 0) {
             result = false;
         }
 
         if (token === 'VAR' || token === 'LET') {
-            self._ctx.invar = true;
+            state.invar = true;
         }
 
-        if (token === ';' && self._ctx.invar) {
-            self._ctx.invar = false;
+        if (token === ';' && state.invar) {
+            state.invar = false;
         }
 
-        if (self._ctx.cbrace === 0 && self._ctx.bbrace === 0 && self._ctx.tbrace === 0) {
+        if (state.cbrace === 0 && state.bbrace === 0 && state.tbrace === 0) {
             if (
                 ~toks.indexOf(prevTok) && ~toks.indexOf(token) ||
                 ~brace.indexOf(prevTok) && ~toks.indexOf(token) ||
@@ -114,15 +112,19 @@
     }
 
     function inBraces() {
-        return self._ctx.cbrace || self._ctx.bbrace || self._ctx.tbrace || self._ctx.invar;
+        var state = self._ctx.state().state
+        
+        return state.cbrace || state.bbrace || state.tbrace || state.invar;
     }
 
     function resetExpr() {
-        self._ctx.prevTok = undefined;
-        self._ctx.cbrace = 0;
-        self._ctx.bbrace = 0;
-        self._ctx.tbrace = 0;
-        self._ctx.invar = false;
+        self._ctx.state().state = {
+            prevTok: undefined,
+            cbrace: 0,
+            bbrace: 0,
+            tbrace: 0,
+            invar: false
+        }
     }
 
     var ctx = this._ctx;
@@ -147,7 +149,7 @@ NL                      (?![a-zA-Z0-9_$])
 %s tag tag-attrs tag-body tag-and-attrs
 %s for-each if-while
 %s mixin mixin-args mixin-call
-%s block include include-filter filter
+%s block include include-filter filter decorator
 
 %%
 
@@ -157,7 +159,7 @@ NL                      (?![a-zA-Z0-9_$])
 <interp>"!{"                ctx.enter('expr');yytext=false;return 'INTERP_EXPR_BEGIN';
 <interp>"}"                 ctx.leave();return 'INTERP_EXPR_END';
 <interp>"#["                ctx.enter('tag-interp');return 'INTERP_TAG_BEGIN';
-<interp>"]"                 ctx.leave();return 'INTERP_TAG_END';
+<interp>"]"                 ctx.leave();console.log(ctx._quote);return 'INTERP_TAG_END';
 
 <string>{STRING}            ctx._quote.unshift(yytext);ctx.enter('string-body');
 <string-body>[^'"#!\n\]]*[^] {
@@ -178,6 +180,7 @@ NL                      (?![a-zA-Z0-9_$])
                                         } else if (ctx._quote[0]) {
                                             this.less(yyleng - 1);
                                         }
+                                        ctx._quote.shift()
                                         ctx.leave(2);
                                         return 'STRING';
                                     case last === '#' || last === '!':
@@ -187,7 +190,6 @@ NL                      (?![a-zA-Z0-9_$])
                                         if (nextChar === '{' || (last === '#' && nextChar === '[')) {
                                             this.unput(last);
                                             ctx.enter('interp');
-                                            yytext = yytext.substr(0, yyleng-1);
                                             return 'STRING';
                                         } else {
                                             this.more();
@@ -198,7 +200,7 @@ NL                      (?![a-zA-Z0-9_$])
 <number>{NUM}+\.{NUM}+      ctx.leave();return 'NUMBER';
 <number>{NUM}+              ctx.leave();return 'NUMBER';
 
-<expr>[^]                   resetExpr();ctx.replace('expr-body', 0);
+<expr>[^]                   ctx.replace('expr-body', 0); resetExpr();
 
 <expr-body>let{NL}          if (isExprNotEnd('LET')) return 'LET';
 <expr-body>var{NL}          if (isExprNotEnd('VAR')) return 'VAR';
@@ -350,6 +352,12 @@ NL                      (?![a-zA-Z0-9_$])
 
 <filter>{ID}                ctx.replace('text-block'); return 'ID';
 
+<decorator>\@{ID}           yytext = yytext.substr(1); return 'DECORATOR_NAME';
+<decorator>"("              ctx.enter('expr'); return '(';
+<decorator>")"              return ')';
+<decorator>{WS}+            /* ignore */
+<decorator>\n               ctx.leave(1, 0);
+
 <INITIAL>\n{WS}*\n          this.unput('\n');
 <INITIAL>\n{WS}*            {
                                 var indent = ctx._indent;
@@ -382,6 +390,7 @@ NL                      (?![a-zA-Z0-9_$])
 \-                          ctx.enter('expr'); return 'STATEMENT_TAG';
 \=|\!\=                     ctx.enter('expr'); return 'EXPR_TAG';
 \:                          ctx.enter('filter'); return 'FILTER_TAG';
+\@                          ctx.enter('decorator', 0);
 
 mixin{NL}                   ctx.enter('mixin', 0);
 block{NL}                   ctx.enter('block', 0);
