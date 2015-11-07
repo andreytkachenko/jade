@@ -22,7 +22,6 @@
                 this.enter(name, less);
             },
             enter: function (name, less) {
-                console.log('>>', name)
                 this._stack.push({
                     name: name,
                     cbc: 0
@@ -159,7 +158,7 @@ NL                      (?![a-zA-Z0-9_$])
 <interp>"!{"                ctx.enter('expr');yytext=false;return 'INTERP_EXPR_BEGIN';
 <interp>"}"                 ctx.leave();return 'INTERP_EXPR_END';
 <interp>"#["                ctx.enter('tag-interp');return 'INTERP_TAG_BEGIN';
-<interp>"]"                 ctx.leave();console.log(ctx._quote);return 'INTERP_TAG_END';
+<interp>"]"                 ctx.leave();return 'INTERP_TAG_END';
 
 <string>{STRING}            ctx._quote.unshift(yytext);ctx.enter('string-body');
 <string-body>[^'"#!\n\]]*[^] {

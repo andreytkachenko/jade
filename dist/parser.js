@@ -988,7 +988,6 @@ performAction: function anonymous(yy,yy_,$avoiding_name_collisions,YY_START) {
                 this.enter(name, less);
             },
             enter: function (name, less) {
-                console.log('>>', name)
                 this._stack.push({
                     name: name,
                     cbc: 0
@@ -1107,7 +1106,7 @@ case 3:ctx.leave();return 42;
 break;
 case 4:ctx.enter('tag-interp');return 43;
 break;
-case 5:ctx.leave();console.log(ctx._quote);return 45;
+case 5:ctx.leave();return 45;
 break;
 case 6:ctx._quote.unshift(yy_.yytext);ctx.enter('string-body');
 break;
