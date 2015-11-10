@@ -59,6 +59,8 @@ line
         { $$ = new yy.$.MixinYieldNode(); }
     | BLOCK NEWLINE
         { $$ = new yy.$.MixinBlockNode(); }
+    | SUPERBLOCK NEWLINE
+        { $$ = new yy.$.SuperBlockNode(); }
     ;
 
 block
@@ -68,7 +70,7 @@ block
 
 text-line
     : TEXT_TAG text NEWLINE
-        { $$ = $2; }
+        { $2.addString('\n'); $$ = $2; }
     | text NEWLINE
         { $$ = $1.addString('\n'); }
     ;
@@ -108,10 +110,10 @@ text
         { $$ = $1.addString($2); }
 
     | INTERP_EXPR_BEGIN expr-node INTERP_EXPR_END
-        { $$ = new yy.$.StringArrayNode($2); }
+        { $2.setEscape($1); $$ = new yy.$.StringArrayNode($2); }
 
     | text INTERP_EXPR_BEGIN expr-node INTERP_EXPR_END
-        { $$ = $1.addNode($3); }
+        { $3.setEscape($2); $$ = $1.addNode($3); }
 
     | INTERP_TAG_BEGIN tag-interp INTERP_TAG_END
         { $$ = new yy.$.StringArrayNode($2); }
@@ -121,14 +123,14 @@ text
     ;
 
 include
-    : INCLUDE HREF NEWLINE
+    : INCLUDE expr NEWLINE
         { $$ = new yy.$.IncludeNode($2); }
-    | INCLUDE FILTER_TAG ID HREF NEWLINE
+    | INCLUDE FILTER_TAG ID expr NEWLINE
         { $$ = new yy.$.IncludeNode($4, $3); }
     ;
 
 extends
-    : EXTENDS HREF NEWLINE
+    : EXTENDS expr NEWLINE
         { $$ = new yy.$.ExtendsNode($2); }
     ;
 
@@ -222,7 +224,9 @@ while
     ;
 
 extend-block
-    : BLOCK ID NEWLINE block
+    : BLOCK ID NEWLINE
+        { $$ = new yy.$.BlockNode($2, null, null); }
+    | BLOCK ID NEWLINE block
         { $$ = new yy.$.BlockNode($2, null, $4); }
     | BLOCK APPEND ID NEWLINE block
         { $$ = new yy.$.BlockNode($3, 'APPEND', $5); }

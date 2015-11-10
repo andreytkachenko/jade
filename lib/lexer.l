@@ -142,7 +142,8 @@ ASSIGN                  \>\>\>\=|\<\<\<\=|\|\=|&\=|\+\=|\-\=|\*\=|\/\=|%\=|\>\>\
 OPERATORS               \+\+|\-\-|\.\.|[!~\[\]\(\)\{\},>.<+/*&%:?^|-]
 NL                      (?![a-zA-Z0-9_$])
 
-%s number string string-body text-block comment-line comment-block
+%s number string string-body text-block comment-line comment-block 
+%s simplestring simplestring-body
 %s interp tag-interp tag-interp-body
 %s expr expr-body expr-return
 %s tag tag-attrs tag-body tag-and-attrs
@@ -193,6 +194,24 @@ NL                      (?![a-zA-Z0-9_$])
                                         } else {
                                             this.more();
                                         }
+                                }
+                            }
+
+<simplestring>{STRING}    ctx._quote.unshift(yytext);ctx.enter('simplestring-body');
+<simplestring-body>[^'"]*[^] {
+                                var last = yytext.charAt(yyleng-1);
+                                var quote = ctx._quote[0];
+                                var preLast = yyleng > 0 ? yytext.charAt(yyleng-2) : quote;
+
+                                switch (true) {
+                                    default:
+                                    case preLast === '\\':
+                                        this.more();break;
+                                    case ctx._quote[0] === last:
+                                        yytext = yytext.substr(0, yyleng - 1);
+                                        ctx._quote.shift()
+                                        ctx.leave(2);
+                                        return 'STRING';
                                 }
                             }
 
@@ -342,10 +361,11 @@ NL                      (?![a-zA-Z0-9_$])
 <if-while>\n                ctx.leave(1, 0);
 
 <include>"include"          return 'INCLUDE';
-<include>"extends"          return 'EXTENDS';
+<include>"extends"          ctx.enter('expr'); return 'EXTENDS';
 <include>":"                ctx.enter('include-filter');return 'FILTER_TAG';
+<include>{WS}+              /* ignore */
 <include>\n                 ctx.leave(1, 0);
-<include>[^\n]+             return 'HREF';
+<include>[^]                ctx.enter('expr', 0); 
 <include-filter>{WS}+       /* ignore */
 <include-filter>{ID}        ctx.leave();return 'ID';
 
@@ -384,7 +404,7 @@ NL                      (?![a-zA-Z0-9_$])
                             }
 
 \+                          ctx.enter('mixin-call'); return 'CALL'
-\|                          ctx.enter('string-body'); return 'TEXT_TAG'
+\|{WS}+                     ctx.enter('string-body'); return 'TEXT_TAG'
 \<                          ctx.enter('string-body', 0);
 \-                          ctx.enter('expr'); return 'STATEMENT_TAG';
 \=|\!\=                     ctx.enter('expr'); return 'EXPR_TAG';
@@ -393,6 +413,7 @@ NL                      (?![a-zA-Z0-9_$])
 
 mixin{NL}                   ctx.enter('mixin', 0);
 block{NL}                   ctx.enter('block', 0);
+superblock{NL}              return 'SUPERBLOCK';
 append{NL}                  ctx.enter('block', 0);
 prepend{NL}                 ctx.enter('block', 0);
 (?:if|unless|while|else{WS}*if|when|case){NL}  ctx.enter("if-while", 0);

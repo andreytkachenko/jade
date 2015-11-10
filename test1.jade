@@ -1,0 +1,17 @@
+extends 'site-!{site.layout}.jade'
+
+mixin error(type, mesage)
+    div(class="message-#{type}")
+        block
+
+block title
+    | My Cool Website
+    superblock
+    | Yes
+
+div
+    div
+        p Hello, World!
+        +error(['red', 'bordered'])(data="er-1") Error
+
+    

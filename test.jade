@@ -1,5 +1,11 @@
+include 'test1.jade'
+
 ul
     li.first Page 1
     li.middle Page 2
+    
+    @onClick(hide(this))
     li.middle= page1
+    
+    @onClick(a += 1)
     li.last: a Page 4
