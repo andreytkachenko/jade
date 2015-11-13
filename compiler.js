@@ -3,6 +3,8 @@
  */
 var parser = require("./dist/parser").parser;
 parser.yy.$ = require("./lib/scope");
+var jsbeautify = require("js-beautify");
+var html = require("html");
 
 var fs = require("fs");
 var util = require("util");
@@ -224,19 +226,38 @@ var generator = {
     },
     
     walkWhile: function (node) {
-        
+        throw Error('While unimplemented!');
     },
     
-    walkCase: function (node) {
+    walkCase: function (node, parent_id) {
+        var id = __gen_id();
+        var expr = walkNode(node.expr);
+        expr = expr.deps ? __wrap(expr.value) : expr.value;
+        var children_js = [];
+        var exprs = [], tcase, texpr;
+        var parent_js = __wrap_f('n_' + parent_id);
+        var default_idx = null;
         
-    },
-
-    walkCaseWhen: function (node) {
+        for (var i = 0; i < node.cases.length; i++) {
+            tcase = node.cases[i];
+            texpr = tcase.when ? walkNode(tcase.when) : null;
+            
+            if (texpr) {
+                exprs.push(util.format('{children:%d,expr:%s}', children_js.length, texpr.deps.length ? __wrap(texpr.value) : texpr.value));
+            } else {
+                default_idx = children_js.length;
+            }
+            
+            if (tcase.block) {
+                var tags = walkTags(tcase.block);
+                children_js.push(__wrap_children(tags));
+            }
+        }
         
-    },
-
-    walkCaseDefault: function (node) {
-        
+        return [
+            id, 
+            util.format('var n_%d=driver.casewhen(s,%s,[%s],[%s],%s,%s);',id,parent_js,children_js.join(','),exprs.join(','),expr,default_idx)
+        ];
     },
     
     walkForIn: function (node, parent_id) {
@@ -254,14 +275,22 @@ var generator = {
         var parent_js = __wrap_f('n_' + parent_id);
         var block_js = __wrap_children(block);
         
-        return [id, util.format('var n_%d=driver.forin(s,%s,%s,%s,"%s","%s");\n',id,parent_js,block_js,expr_js,value,key)];
+        return [id, util.format('var n_%d=driver.forin(s,%s,%s,%s,"%s","%s");',id,parent_js,block_js,expr_js,value,key)];
     },
     
     walkIfElse: function (node, parent_id) {
         var id = __gen_id();
         var cond = walkNode(node.cond);
         var onTrue = walkTags(node.onTrue, id);
-        var onFalse = node.onFalse ? walkTags(node.onFalse, id) : null;
+        var onFalse = null;
+        if (node.onFalse){
+            if (node.onFalse instanceof Array) {
+                onFalse = walkTags(node.onFalse, id);
+            } else {
+                onFalse = walkTags([node.onFalse], id);
+            }
+        }
+        
         var cond_js = cond.value;
         
         if (cond.deps.length) {
@@ -280,23 +309,65 @@ var generator = {
         
         var children_js = '['+children.join(',')+']';
         
-        return [id, util.format('var n_%d=driver.ifelse(s,%s,%s,%s);\n',id,parent_js,children_js,cond_js)];
+        return [id, util.format('var n_%d=driver.ifelse(s,%s,%s,%s);',id,parent_js,children_js,cond_js)];
     },
     
     walkComment: function () {
-        
+        throw new Error('unimplemented!');
     },
     
     walkCommentLine: function () {
-        
+        throw new Error('unimplemented!');
     },
     
-    walkInclude: function () {
+    walkInclude: function (node, parent_id) {
+        var id = __gen_id();
+        var href = walkNode(node.href);
+        var href_js = href.value;
         
+        if (href.deps.length) {
+            href_js = __wrap(href.value);
+        }
+        
+        var parent_js = __wrap_f('n_'+parent_id);
+        
+        return [id, util.format('var n_%d=driver.include(s,%s,%s);',id,parent_js,href_js)];
     },
     
     walkExtends: function () {
-        
+        throw new Error('unimplemented!');
+    },
+    
+    walkFilter: function (node, parent_id) {
+        throw new Error('unimplemented!');
+    },
+    
+    walkBlock: function (node, parent_id) {
+        throw new Error('unimplemented!');
+    },
+    
+    walkSuperBlock: function (node, parent_id) {
+        throw new Error('unimplemented!');
+    },
+    
+    walkMixin: function (node, parent_id) {
+        throw new Error('unimplemented!');
+    },
+    
+    walkMixinArgument: function (node, parent_id) {
+        throw new Error('unimplemented!');
+    },
+    
+    walkMixinCall: function (node, parent_id) {
+        throw new Error('unimplemented!');
+    },
+
+    walkMixinYield: function (node, parent_id) {
+        throw new Error('unimplemented!');
+    },
+
+    walkMixinBlock: function (node, parent_id) {
+        throw new Error('unimplemented!');
     },
     
     walkText: function (node, parentId) {
@@ -308,12 +379,14 @@ var generator = {
         }
         var parent_js = __wrap_f('n_'+parentId);
         
-        return [id, util.format('var n_%d=driver.text(s,%s,%s);\n',id,parent_js,value_js)];
+        return [id, util.format('var n_%d=driver.text(s,%s,%s);',id,parent_js,value_js)];
     },
     
     walkTag: function (node, parentId) {
         var id = __gen_id();
         var tags = node.block ? walkTags(node.block, id) : null;
+        var decors = node.decorators ? walkList(node.decorators, id) : null;
+        
         var attrs_items = [];
         var attrs_objects = [];
         var attrs_deps = [];
@@ -327,6 +400,7 @@ var generator = {
                 attrs_objects.push(attr.value);
             }
         }
+        
         if (node.attrs.length) {
             if (attrs_objects.length) {
                 var attrs_js = util.format('__extend({%s},%s)', attrs_items.join(','), attrs_objects.join(', '));
@@ -343,8 +417,9 @@ var generator = {
         
         var children_js = __wrap_children(tags);
         var parent_js = __wrap_f('n_'+parentId);
+        var decors_js = decors?decors.values.join(','):'';
         
-        return [id, util.format('var n_%d=driver.tag(s,%s,%s,"%s",%s);\n',id,parent_js,children_js,node.tag,attrs_js)];
+        return [id, util.format('var n_%d=driver.tag(s,%s,%s,"%s",%s,[%s]);',id,parent_js,children_js,node.tag,attrs_js,decors_js)];
     },
     
     walkTagAttribute : function (node) {
@@ -357,6 +432,22 @@ var generator = {
         return {
             value: '"' + node.attr + '": ' + js,
             deps: value.deps
+        };
+    },
+    
+    walkDecorator: function (node) {
+        var args = walkList(node.args);
+        return {
+            value: util.format('{id:"%s",args:[%s]}', node.id, args.values.join(',')),
+            deps: args.deps
+        };
+    },
+    
+    walkDecoratorArgument: function (node) {
+        var expr = walkNode(node.expr);
+        return {
+            value: expr.deps.length ? __wrap(expr.value) : expr.value,
+            deps: expr.deps
         };
     }
 };
@@ -409,7 +500,7 @@ function walkList(nodes) {
 }
 
 function __wrap(value) {
-    return 'function(scope){with(scope){return '+value+';}}';
+    return 'function(s){with(s){return '+value+';}}';
 }
 
 function __wrap_f(value) {
@@ -427,7 +518,7 @@ function __wrap_children(tags) {
         }
     }
 
-    return 'function(__s){s=__s||s;\n'+js.join('')+'return ['+children_ids.join(',')+'];\n}';
+    return 'function(s){\n'+js.join('')+'return ['+children_ids.join(',')+'];\n}';
 }
 
 function __gen_id() {
@@ -482,8 +573,8 @@ function generate (filename) {
         ids.push(val.values[i][0]);
     }
     
-    var src = util.format('(function(s,driver){var __mixins=[];var __blocks=[];%s;return {nodes:[n_%s],mixins:__mixins,blocks:__blocks};})', items.join(''), ids.join(',n_'));
-//    console.log(src);
+    var src = util.format('(function(s,driver){%s; return [n_%s];})', items.join(''), ids.join(',n_'));
+//    console.log(jsbeautify.js_beautify(src));
     
     return eval(src);
 }
@@ -501,7 +592,7 @@ var driver = {
 
         return child;   
     },
-    tag: function(scope, parent, children, name, attrs, deps) {
+    tag: function(scope, parent, children, name, attrs, decors) {
         var tmp = [];
         if (attrs) {
             attrs = __unwrap(scope, attrs);
@@ -514,7 +605,8 @@ var driver = {
         }
 
         var attrs_html = tmp.length ? ' ' + tmp.join(' ') : '';
-        return '<'+name+attrs_html+'>\n' + children().join('\n') + '\n</'+name+'>'
+        console.log(decors);
+        return '<'+name+attrs_html+'>' + children(scope).join('\n') + '</'+name+'>'
     },
 
     text: function(scope, parent, text, deps) {
@@ -524,7 +616,30 @@ var driver = {
     ifelse: function (scope, parent, children, cond) {
         var cond_val = __unwrap(scope, cond);
         
-        return cond_val ? children[0]().join('\n') : (children[1]?children[1]().join('\n'):undefined);
+        return cond_val ? children[0](scope).join('') : (children[1]?children[1](scope).join(''):undefined);
+    },
+    
+    casewhen: function (scope, parent, children, exprs, expr, default_idx) {
+        var expr = __unwrap(scope, expr),
+            result, resultGot = false;
+        
+        for (var i = 0; i < exprs.length; i++) {
+            if (expr == __unwrap(scope, exprs[i].expr)) {
+                resultGot = true;
+                result = children[exprs[i].children];
+                break;
+            }
+        }
+        
+        if (!resultGot && default_idx !== null) {
+            result = children[default_idx];
+        }
+        
+        return result(scope);
+    },
+    
+    dowhile: function () {
+        
     },
     
     forin: function (scope, parent, children, expr, value, key) {
@@ -550,7 +665,27 @@ var driver = {
             }
         }
         
-        return values.join('\n');
+        return values.join('');
+    },
+    
+    include: function () {
+        
+    },
+    
+    extend: function () {
+        
+    },
+    
+    mixin: function () {
+        
+    },
+    
+    mixincall: function () {
+        
+    },
+    
+    block: function () {
+        
     }
 };
 
@@ -567,7 +702,4 @@ var ctx = {
 };
 
 var test2 = generate('./test2.jade');
-
-console.log(test2(ctx, driver).nodes[0]);
-
-
+console.log(html.prettyPrint(test2(ctx, driver).join('')));
