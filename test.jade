@@ -1,11 +1,8 @@
-include 'test1.jade'
-
-ul
-    li.first Page 1
-    li.middle Page 2
-    
-    @onClick(hide(this))
-    li.middle= page1
-    
-    @onClick(a += 1)
-    li.last: a Page 4
+div= fuck
+    ul.list&attributes(test)
+        li Page 1
+        li Page 2
+            a(href = 'test.html' + 1) test
+        li.
+            Hello Kitty
+            My name is Andrey

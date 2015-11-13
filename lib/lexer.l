@@ -70,8 +70,11 @@
         var prevTok = state.prevTok;
         state.prevTok = token;
 
+        if (state.invar) state.invar = false;
+
         var toks = ['ID', 'NUM', 'STRING', 'NULL', 'TRUE', 'FALSE'];
         var brace = [')', ']', '}'];
+        var internal = [',']
 
         if (token === '(') state.cbrace++;
         if (token === ')') state.cbrace--;
@@ -88,16 +91,13 @@
             state.invar = true;
         }
 
-        if (token === ';' && state.invar) {
-            state.invar = false;
-        }
-
         if (state.cbrace === 0 && state.bbrace === 0 && state.tbrace === 0) {
             if (
                 ~toks.indexOf(prevTok) && ~toks.indexOf(token) ||
                 ~brace.indexOf(prevTok) && ~toks.indexOf(token) ||
                 prevTok === '}' && token === '(' ||
-                ~toks.indexOf(prevTok) && token === '{'
+                ~toks.indexOf(prevTok) && token === '{' || 
+                ~internal.indexOf(token)
             ) {
                 result = false;
             }
@@ -142,18 +142,16 @@ ASSIGN                  \>\>\>\=|\<\<\<\=|\|\=|&\=|\+\=|\-\=|\*\=|\/\=|%\=|\>\>\
 OPERATORS               \+\+|\-\-|\.\.|[!~\[\]\(\)\{\},>.<+/*&%:?^|-]
 NL                      (?![a-zA-Z0-9_$])
 
-%s number string string-body text-block comment-line comment-block 
+%s number string string-body text-block comment comment-line comment-block 
 %s simplestring simplestring-body
 %s interp tag-interp tag-interp-body
-%s expr expr-body expr-return
+%s expr expr-body
 %s tag tag-attrs tag-body tag-and-attrs
 %s for-each if-while
 %s mixin mixin-args mixin-call
 %s block include include-filter filter decorator
 
 %%
-
-<INITIAL>\/\/\-|\/\/        ctx.enter('comment-block');ctx.enter('comment-line',0);
 
 <interp>"#{"                ctx.enter('expr');yytext=true;return 'INTERP_EXPR_BEGIN';
 <interp>"!{"                ctx.enter('expr');yytext=false;return 'INTERP_EXPR_BEGIN';
@@ -262,23 +260,29 @@ NL                      (?![a-zA-Z0-9_$])
                             }
 <text-block>[^]             ctx.enter('string-body', 0);
 
-<comment-line>[^\n]+        ctx.leave(); return 'COMMENT';
+<comment>\/\/\-|\/\/        ctx.leave(); ctx.enter('comment-block'); ctx.enter('comment-line'); yytext = yytext === '//-'; return 'COMMENT-TAG';
+<comment-line>{WS}+         /* ignore */
+<comment-line>[^\n]+        ctx.leave(); return 'COMMENT-LINE';
 <comment-block>\n{WS}*\n    this.unput('\n');
 <comment-block>\n{WS}*      {
                                 var len = yyleng - 1,
                                     tokens = ['NEWLINE'];
 
-                                if (len <= ctx._indent[0]) {
+                                if (ctx.inComment && len <= ctx._indent[0]) {
                                     ctx._block = undefined;
                                     ctx.leave(1, 0);
                                     ctx._noNewLine = true;
+                                    ctx.inComment = false;
                                     tokens.push('DEDENT');
-                                } else {
+                                } else if (len > ctx._indent[0]) {
+                                    ctx.inComment = true;
                                     ctx.enter('comment-line', (ctx._block||len) + 1);
                                     if (ctx._block === undefined) {
                                         ctx._block = len;
                                         tokens.push('INDENT');
                                     }
+                                } else {
+                                    ctx.leave(1, 1);
                                 }
 
                                 if (tokens.length) return tokens;
@@ -315,7 +319,7 @@ NL                      (?![a-zA-Z0-9_$])
 <for-each>{ID}              return 'ID';
 <for-each>\n                ctx.leave(1, 0);
 
-<tag-attrs>\=|\!\=          ctx.enter('expr');return yytext;
+<tag-attrs>\=|\!\=          ctx.enter('expr');yytext = yytext === '=';return 'EXPR_TAG';
 <tag-attrs>"("              return '(';
 <tag-attrs>")"              ctx.leave(); return ')';
 <tag-attrs>","              return ',';
@@ -403,11 +407,12 @@ NL                      (?![a-zA-Z0-9_$])
                                 if (tokens.length) return tokens;
                             }
 
+\/\/\-|\/\/                 ctx.enter('comment', 0);
 \+                          ctx.enter('mixin-call'); return 'CALL'
 \|{WS}+                     ctx.enter('string-body'); return 'TEXT_TAG'
 \<                          ctx.enter('string-body', 0);
 \-                          ctx.enter('expr'); return 'STATEMENT_TAG';
-\=|\!\=                     ctx.enter('expr'); return 'EXPR_TAG';
+\=|\!\=                     ctx.enter('expr'); yytext = yytext === '='; return 'EXPR_TAG';
 \:                          ctx.enter('filter'); return 'FILTER_TAG';
 \@                          ctx.enter('decorator', 0);
 
@@ -430,5 +435,5 @@ break{NL}                   return 'BREAK';
 \.{CLASS}                   ctx.enter("tag", 0);
 
 <*>[ \t]+                   /* ignore */
-<<EOF>>                     return 'EOF';
+<<EOF>>                     return Array(ctx._indent.length - 1).fill('DEDENT').concat(['EOF']);
 %%
