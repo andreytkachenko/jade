@@ -55,7 +55,6 @@ line
     | filter
     | comment
     | mixin-call
-    | decorator
     | YIELD NEWLINE
         { $$ = new yy.$.MixinYieldNode(); }
     | BLOCK NEWLINE
@@ -138,22 +137,6 @@ extends
 filter
     : FILTER_TAG ID NEWLINE text-block
         { $$ = new yy.$.FilterNode($2, $4); }
-    ;
-
-decorator
-    : DECORATOR_NAME NEWLINE
-        { $$ = new yy.$.DecoratorNode($1); }
-    | DECORATOR_NAME '(' ')' NEWLINE
-        { $$ = new yy.$.DecoratorNode($1); }
-    | DECORATOR_NAME '(' decorator-args ')' NEWLINE
-        { $$ = new yy.$.DecoratorNode($1, $3); }
-    ;
-
-decorator-args
-    : expr
-        { $$ = [new yy.$.DecoratorArgumentNode($1)]; }
-    | decorator-args ',' expr
-        { $1.push(new yy.$.DecoratorArgumentNode($3)); $$ = $1; }
     ;
 
 comment
@@ -389,7 +372,7 @@ tag-unnamed
         { $$ = [$1, $2] }
     ;
 
-tag
+tag-undecorated
     : TAG NEWLINE
         { $$ = new yy.$.TagNode($1, null, null); }
     | TAG tag-unnamed
@@ -418,6 +401,36 @@ tag-interp
         { $$ = new yy.$.TagNode(null, $1, null); }
     | tag-body tag-tail-interp
         { $$ = new yy.$.TagNode(null, $1, $2); }
+    ;
+
+decorator-args
+    : expr
+        { $$ = [new yy.$.DecoratorArgumentNode($1)]; }
+    | decorator-args ',' expr
+        { $1.push(new yy.$.DecoratorArgumentNode($3)); $$ = $1; }
+    ;
+
+decorator
+    : DECORATOR_NAME NEWLINE
+        { $$ = new yy.$.DecoratorNode($1); }
+    | DECORATOR_NAME '(' ')' NEWLINE
+        { $$ = new yy.$.DecoratorNode($1); }
+    | DECORATOR_NAME '(' decorator-args ')' NEWLINE
+        { $$ = new yy.$.DecoratorNode($1, $3); }
+    ;
+
+decorators
+    : decorator
+        { $$ = [$1] }
+    | decorators decorator
+        { $1.push($2); $$ = $1 }
+    ;
+
+tag
+    : tag-undecorated
+        { $$ = $1 }
+    | decorators tag-undecorated
+        { $2.setDecorators($1); $$ = $2 }
     ;
 
 unary
